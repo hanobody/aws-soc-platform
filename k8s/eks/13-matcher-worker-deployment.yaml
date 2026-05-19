@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-soc-matcher-worker
+  namespace: aws-soc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aws-soc-matcher-worker
+  template:
+    metadata:
+      labels:
+        app: aws-soc-matcher-worker
+    spec:
+      serviceAccountName: aws-soc-matcher-worker
+      containers:
+        - name: matcher-worker
+          image: your-registry/aws-soc-matcher-worker:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aws-soc-secrets
+                  key: DATABASE_URL
+            - name: WORKER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: aws-soc-config
+                  key: MATCHER_WORKER_NAME
+            - name: MATCHER_BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: aws-soc-config
+                  key: MATCHER_BATCH_SIZE
+            - name: MATCHER_POLL_INTERVAL_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: aws-soc-config
+                  key: MATCHER_POLL_INTERVAL_MS
+            - name: MATCHER_RULE_CACHE_TTL_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: aws-soc-config
+                  key: MATCHER_RULE_CACHE_TTL_SECONDS
+            - name: MATCHER_MAX_ATTEMPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: aws-soc-config
+                  key: MATCHER_MAX_ATTEMPTS
+            - name: MATCHER_DEFAULT_SEVERITY
+              valueFrom:
+                configMapKeyRef:
+                  name: aws-soc-config
+                  key: MATCHER_DEFAULT_SEVERITY
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

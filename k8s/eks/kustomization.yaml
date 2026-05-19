@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aws-soc
+resources:
+  - 00-namespace.yaml
+  - 01-configmap.yaml
+  - 03-serviceaccounts.yaml
+  - 10-api-deployment.yaml
+  - 11-web-deployment.yaml
+  - 12-ingest-worker-deployment.yaml
+  - 13-matcher-worker-deployment.yaml
+  - 20-services.yaml

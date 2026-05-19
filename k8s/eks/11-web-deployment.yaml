@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-soc-web
+  namespace: aws-soc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aws-soc-web
+  template:
+    metadata:
+      labels:
+        app: aws-soc-web
+    spec:
+      containers:
+        - name: web
+          image: your-registry/aws-soc-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi

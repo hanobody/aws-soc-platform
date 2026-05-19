@@ -1,0 +1,109 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: aws-soc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: soc_platform
+      POSTGRES_USER: soc_admin
+      POSTGRES_PASSWORD: soc_dev_password
+      TZ: Asia/Yerevan
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soc_admin -d soc_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    env_file:
+      - .env
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: aws-soc-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://soc_admin:soc_dev_password@postgres:5432/soc_platform
+      CORS_ORIGIN: http://localhost:3000
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:-https://sqs.ap-southeast-1.amazonaws.com/809893975949/soc-cloudtrail-events}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+
+  web:
+    env_file:
+      - .env
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:4000
+        VITE_KEYCLOAK_ENABLED: "false"
+        VITE_KEYCLOAK_URL: http://localhost:8080
+        VITE_KEYCLOAK_REALM: soc
+        VITE_KEYCLOAK_CLIENT_ID: soc-web
+    container_name: aws-soc-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+  ingest-worker:
+    env_file:
+      - .env
+    build:
+      context: .
+      dockerfile: apps/ingest-worker-go/Dockerfile
+    container_name: aws-soc-ingest-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:-https://sqs.ap-southeast-1.amazonaws.com/809893975949/soc-cloudtrail-events}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://soc_admin:soc_dev_password@postgres:5432/soc_platform}
+      WORKER_NAME: ${INGEST_WORKER_NAME:-ingest-worker}
+      SQS_MAX_MESSAGES: ${SQS_MAX_MESSAGES:-10}
+      SQS_WAIT_SECONDS: ${SQS_WAIT_SECONDS:-20}
+      SQS_VISIBILITY_TIMEOUT: ${SQS_VISIBILITY_TIMEOUT:-120}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+
+  matcher-worker:
+    env_file:
+      - .env
+    build:
+      context: .
+      dockerfile: apps/matcher-worker-go/Dockerfile
+    container_name: aws-soc-matcher-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://soc_admin:soc_dev_password@postgres:5432/soc_platform}
+      WORKER_NAME: ${MATCHER_WORKER_NAME:-matcher-worker}
+      MATCHER_BATCH_SIZE: ${MATCHER_BATCH_SIZE:-100}
+      MATCHER_POLL_INTERVAL_MS: ${MATCHER_POLL_INTERVAL_MS:-3000}
+      MATCHER_RULE_CACHE_TTL_SECONDS: ${MATCHER_RULE_CACHE_TTL_SECONDS:-15}
+      MATCHER_MAX_ATTEMPTS: ${MATCHER_MAX_ATTEMPTS:-10}
+      MATCHER_DEFAULT_SEVERITY: ${MATCHER_DEFAULT_SEVERITY:-medium}
+
+volumes:
+  postgres_data:

@@ -1,0 +1,33 @@
+{
+  "name": "aws-soc-platform",
+  "version": "0.2.0",
+  "private": true,
+  "description": "AWS multi-account SOC platform MVP scaffold",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose stop postgres",
+    "db:logs": "docker compose logs -f postgres",
+    "compose:up": "docker compose up -d --build",
+    "compose:down": "docker compose down",
+    "compose:rebuild": "docker compose up -d --build --force-recreate",
+    "compose:ps": "docker compose ps",
+    "compose:logs": "docker compose logs -f",
+    "api:dev": "npm --workspace apps/api run dev",
+    "api:start": "npm --workspace apps/api run start",
+    "web:dev": "npm --workspace apps/web run dev",
+    "web:build": "npm --workspace apps/web run build",
+    "seed:accounts": "curl -s -X POST http://localhost:4000/seed/accounts-regions",
+    "seed:catalog": "curl -s -X POST http://localhost:4000/seed/catalog",
+    "seed:default-rules": "curl -s -X POST http://localhost:4000/seed/default-rules",
+    "seed:all": "npm run seed:accounts && npm run seed:catalog && npm run seed:default-rules",
+    "dashboard:workers": "curl -s http://localhost:4000/dashboard/workers",
+    "dashboard:queue": "curl -s http://localhost:4000/dashboard/queue",
+    "dashboard:pipeline": "curl -s http://localhost:4000/dashboard/pipeline",
+    "install:all": "npm install --workspaces",
+    "dev": "echo 'Run api:dev and web:dev in separate terminals'"
+  }
+}
