@@ -49,7 +49,25 @@ VALUES (
   '默认 CloudTrail 查询模板，可直接修改 SQL 执行。',
   'cloudtrail',
   'system',
-  'SELECT\n  eventtime,\n  account,\n  region,\n  eventsource,\n  eventname,\n  useridentity.arn AS user_arn,\n  sourceipaddress,\n  requestparameters\nFROM soc_logs.cloudtrail_logs\nWHERE account = ''809893975949''\n  AND region = ''ap-southeast-1''\n  AND year = ''2026''\n  AND month = ''05''\n  AND day = ''18''\n  AND eventsource = ''ec2.amazonaws.com''\n  AND eventname = ''CreateSecurityGroup''\nORDER BY eventtime DESC\nLIMIT 50',
+  $$SELECT
+  eventtime,
+  account,
+  region,
+  eventsource,
+  eventname,
+  useridentity.arn AS user_arn,
+  sourceipaddress,
+  requestparameters
+FROM soc_logs.cloudtrail_logs
+WHERE account = '809893975949'
+  AND region = 'ap-southeast-1'
+  AND year = '2026'
+  AND month = '05'
+  AND day = '18'
+  AND eventsource = 'ec2.amazonaws.com'
+  AND eventname = 'CreateSecurityGroup'
+ORDER BY eventtime DESC
+LIMIT 50$$,
   'system',
   'system'
 )
@@ -72,7 +90,25 @@ VALUES
   '查询 EC2 实例创建、启动、停止、终止等事件',
   'ec2',
   'system',
-  'SELECT\n  eventtime,\n  account,\n  region,\n  eventsource,\n  eventname,\n  useridentity.arn AS user_arn,\n  sourceipaddress,\n  responseelements\nFROM soc_logs.cloudtrail_logs\nWHERE account = ''809893975949''\n  AND region = ''ap-southeast-1''\n  AND year = ''2026''\n  AND month = ''05''\n  AND day = ''18''\n  AND eventsource = ''ec2.amazonaws.com''\n  AND eventname IN (''RunInstances'', ''StartInstances'', ''StopInstances'', ''RebootInstances'', ''TerminateInstances'')\nORDER BY eventtime DESC\nLIMIT 100',
+  $$SELECT
+  eventtime,
+  account,
+  region,
+  eventsource,
+  eventname,
+  useridentity.arn AS user_arn,
+  sourceipaddress,
+  responseelements
+FROM soc_logs.cloudtrail_logs
+WHERE account = '809893975949'
+  AND region = 'ap-southeast-1'
+  AND year = '2026'
+  AND month = '05'
+  AND day = '18'
+  AND eventsource = 'ec2.amazonaws.com'
+  AND eventname IN ('RunInstances', 'StartInstances', 'StopInstances', 'RebootInstances', 'TerminateInstances')
+ORDER BY eventtime DESC
+LIMIT 100$$,
   'system',
   'system'
 )
