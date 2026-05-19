@@ -416,6 +416,38 @@ LIMIT 50$$,
       'SELECT\n  eventtime,\n  account,\n  region,\n  eventname,\n  useridentity.arn AS user_arn,\n  sourceipaddress,\n  requestparameters,\n  responseelements\nFROM soc_logs.cloudtrail_logs\nWHERE account = ''809893975949''\n  AND eventsource = ''iam.amazonaws.com''\n  AND eventname IN (''CreateAccessKey'', ''UpdateAccessKey'', ''DeleteAccessKey'')\n  AND year = ''2026''\n  AND month = ''05''\n  AND day = ''18''\nORDER BY eventtime DESC\nLIMIT 100',
       'system',
       'system'
+    ),
+    (
+      'ec2_instance_id_activity',
+      'EC2 指定实例 ID 事件查询',
+      '按指定 EC2 实例 ID 排查相关 CloudTrail 事件，请把示例实例 ID 替换成目标实例。',
+      'cloudtrail',
+      'system',
+      $$SELECT
+  eventtime,
+  account,
+  region,
+  eventsource,
+  eventname,
+  useridentity.arn AS user_arn,
+  sourceipaddress,
+  json_extract_scalar(responseelements, '$.instancesSet.items[0].instanceId') AS response_instance_id,
+  requestparameters,
+  responseelements
+FROM soc_logs.cloudtrail_logs
+WHERE account = '809893975949'
+  AND eventsource = 'ec2.amazonaws.com'
+  AND year = '2026'
+  AND month = '05'
+  AND day = '18'
+  AND (
+    CAST(requestparameters AS VARCHAR) LIKE '%i-0123456789abcdef0%'
+    OR CAST(responseelements AS VARCHAR) LIKE '%i-0123456789abcdef0%'
+  )
+ORDER BY eventtime DESC
+LIMIT 100$$,
+      'system',
+      'system'
     )
     ON CONFLICT (template_code) DO NOTHING
   `);
