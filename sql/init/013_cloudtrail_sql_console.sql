@@ -50,14 +50,14 @@ VALUES (
   'cloudtrail',
   'system',
   $$SELECT
-  eventtime,
-  account,
-  region,
-  eventsource,
-  eventname,
-  useridentity.arn AS user_arn,
-  sourceipaddress,
-  requestparameters
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventsource AS "事件来源",
+  eventname AS "事件名称",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  requestparameters AS "请求参数"
 FROM soc_logs.cloudtrail_logs
 WHERE account = '809893975949'
   AND region = 'ap-southeast-1'
@@ -91,14 +91,14 @@ VALUES
   'ec2',
   'system',
   $$SELECT
-  eventtime,
-  account,
-  region,
-  eventsource,
-  eventname,
-  useridentity.arn AS user_arn,
-  sourceipaddress,
-  responseelements
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventsource AS "事件来源",
+  eventname AS "事件名称",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  responseelements AS "响应结果"
 FROM soc_logs.cloudtrail_logs
 WHERE account = '809893975949'
   AND region = 'ap-southeast-1'
@@ -119,16 +119,16 @@ LIMIT 100$$,
   'cloudtrail',
   'system',
   $$SELECT
-  eventtime,
-  account,
-  region,
-  eventsource,
-  eventname,
-  useridentity.arn AS user_arn,
-  sourceipaddress,
-  json_extract_scalar(responseelements, '$.instancesSet.items[0].instanceId') AS response_instance_id,
-  requestparameters,
-  responseelements
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventsource AS "事件来源",
+  eventname AS "事件名称",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  json_extract_scalar(responseelements, '$.instancesSet.items[0].instanceId') AS "实例ID",
+  requestparameters AS "请求参数",
+  responseelements AS "响应结果"
 FROM soc_logs.cloudtrail_logs
 WHERE account = '809893975949'
   AND eventsource = 'ec2.amazonaws.com'

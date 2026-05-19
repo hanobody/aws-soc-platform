@@ -356,14 +356,14 @@ async function ensureCloudtrailSqlTables() {
       'cloudtrail',
       'system',
       $$SELECT
-  eventtime,
-  account,
-  region,
-  eventsource,
-  eventname,
-  useridentity.arn AS user_arn,
-  sourceipaddress,
-  requestparameters
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventsource AS "事件来源",
+  eventname AS "事件名称",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  requestparameters AS "请求参数"
 FROM soc_logs.cloudtrail_logs
 WHERE account = '809893975949'
   AND region = 'ap-southeast-1'
@@ -383,7 +383,24 @@ LIMIT 50$$,
       '排查最近 RunInstances、StartInstances、StopInstances、TerminateInstances 操作。',
       'cloudtrail',
       'system',
-      'SELECT\n  eventtime,\n  account,\n  region,\n  eventname,\n  useridentity.arn AS user_arn,\n  sourceipaddress,\n  json_extract_scalar(responseelements, ''$.instancesSet.items[0].instanceId'') AS instance_id,\n  requestparameters\nFROM soc_logs.cloudtrail_logs\nWHERE account = ''809893975949''\n  AND eventsource = ''ec2.amazonaws.com''\n  AND eventname IN (''RunInstances'', ''StartInstances'', ''StopInstances'', ''TerminateInstances'')\n  AND year = ''2026''\n  AND month = ''05''\n  AND day = ''18''\nORDER BY eventtime DESC\nLIMIT 100',
+      $$SELECT
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventname AS "事件名称",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  json_extract_scalar(responseelements, '$.instancesSet.items[0].instanceId') AS "实例ID",
+  requestparameters AS "请求参数"
+FROM soc_logs.cloudtrail_logs
+WHERE account = '809893975949'
+  AND eventsource = 'ec2.amazonaws.com'
+  AND eventname IN ('RunInstances', 'StartInstances', 'StopInstances', 'TerminateInstances')
+  AND year = '2026'
+  AND month = '05'
+  AND day = '18'
+ORDER BY eventtime DESC
+LIMIT 100$$,
       'system',
       'system'
     ),
@@ -393,7 +410,29 @@ LIMIT 50$$,
       '排查 IAM 用户、角色、策略、策略绑定等敏感变更。',
       'cloudtrail',
       'system',
-      'SELECT\n  eventtime,\n  account,\n  region,\n  eventname,\n  useridentity.arn AS user_arn,\n  sourceipaddress,\n  requestparameters\nFROM soc_logs.cloudtrail_logs\nWHERE account = ''809893975949''\n  AND eventsource = ''iam.amazonaws.com''\n  AND eventname IN (\n    ''CreateUser'', ''DeleteUser'', ''CreateRole'', ''DeleteRole'',\n    ''AttachUserPolicy'', ''DetachUserPolicy'', ''AttachRolePolicy'', ''DetachRolePolicy'',\n    ''PutUserPolicy'', ''PutRolePolicy'', ''DeleteUserPolicy'', ''DeleteRolePolicy'',\n    ''CreatePolicy'', ''CreatePolicyVersion'', ''SetDefaultPolicyVersion'', ''DeletePolicyVersion'',\n    ''UpdateAssumeRolePolicy''\n  )\n  AND year = ''2026''\n  AND month = ''05''\n  AND day = ''18''\nORDER BY eventtime DESC\nLIMIT 100',
+      $$SELECT
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventname AS "事件名称",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  requestparameters AS "请求参数"
+FROM soc_logs.cloudtrail_logs
+WHERE account = '809893975949'
+  AND eventsource = 'iam.amazonaws.com'
+  AND eventname IN (
+    'CreateUser', 'DeleteUser', 'CreateRole', 'DeleteRole',
+    'AttachUserPolicy', 'DetachUserPolicy', 'AttachRolePolicy', 'DetachRolePolicy',
+    'PutUserPolicy', 'PutRolePolicy', 'DeleteUserPolicy', 'DeleteRolePolicy',
+    'CreatePolicy', 'CreatePolicyVersion', 'SetDefaultPolicyVersion', 'DeletePolicyVersion',
+    'UpdateAssumeRolePolicy'
+  )
+  AND year = '2026'
+  AND month = '05'
+  AND day = '18'
+ORDER BY eventtime DESC
+LIMIT 100$$,
       'system',
       'system'
     ),
@@ -403,7 +442,31 @@ LIMIT 50$$,
       '查看 ConsoleLogin 失败和 Root 用户登录行为。',
       'cloudtrail',
       'system',
-      'SELECT\n  eventtime,\n  account,\n  region,\n  eventname,\n  useridentity.type AS user_type,\n  useridentity.arn AS user_arn,\n  sourceipaddress,\n  errorcode,\n  errormessage,\n  additionaleventdata\nFROM soc_logs.cloudtrail_logs\nWHERE account = ''809893975949''\n  AND eventsource = ''signin.amazonaws.com''\n  AND eventname = ''ConsoleLogin''\n  AND (\n    errorcode IS NOT NULL\n    OR useridentity.type = ''Root''\n    OR CAST(responseelements AS VARCHAR) LIKE ''%Failure%''\n  )\n  AND year = ''2026''\n  AND month = ''05''\n  AND day = ''18''\nORDER BY eventtime DESC\nLIMIT 100',
+      $$SELECT
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventname AS "事件名称",
+  useridentity.type AS "用户类型",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  errorcode AS "错误代码",
+  errormessage AS "错误信息",
+  additionaleventdata AS "附加事件数据"
+FROM soc_logs.cloudtrail_logs
+WHERE account = '809893975949'
+  AND eventsource = 'signin.amazonaws.com'
+  AND eventname = 'ConsoleLogin'
+  AND (
+    errorcode IS NOT NULL
+    OR useridentity.type = 'Root'
+    OR CAST(responseelements AS VARCHAR) LIKE '%Failure%'
+  )
+  AND year = '2026'
+  AND month = '05'
+  AND day = '18'
+ORDER BY eventtime DESC
+LIMIT 100$$,
       'system',
       'system'
     ),
@@ -413,7 +476,24 @@ LIMIT 50$$,
       '排查访问密钥创建、更新、删除等敏感行为。',
       'cloudtrail',
       'system',
-      'SELECT\n  eventtime,\n  account,\n  region,\n  eventname,\n  useridentity.arn AS user_arn,\n  sourceipaddress,\n  requestparameters,\n  responseelements\nFROM soc_logs.cloudtrail_logs\nWHERE account = ''809893975949''\n  AND eventsource = ''iam.amazonaws.com''\n  AND eventname IN (''CreateAccessKey'', ''UpdateAccessKey'', ''DeleteAccessKey'')\n  AND year = ''2026''\n  AND month = ''05''\n  AND day = ''18''\nORDER BY eventtime DESC\nLIMIT 100',
+      $$SELECT
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventname AS "事件名称",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  requestparameters AS "请求参数",
+  responseelements AS "响应结果"
+FROM soc_logs.cloudtrail_logs
+WHERE account = '809893975949'
+  AND eventsource = 'iam.amazonaws.com'
+  AND eventname IN ('CreateAccessKey', 'UpdateAccessKey', 'DeleteAccessKey')
+  AND year = '2026'
+  AND month = '05'
+  AND day = '18'
+ORDER BY eventtime DESC
+LIMIT 100$$,
       'system',
       'system'
     ),
@@ -424,16 +504,16 @@ LIMIT 50$$,
       'cloudtrail',
       'system',
       $$SELECT
-  eventtime,
-  account,
-  region,
-  eventsource,
-  eventname,
-  useridentity.arn AS user_arn,
-  sourceipaddress,
-  json_extract_scalar(responseelements, '$.instancesSet.items[0].instanceId') AS response_instance_id,
-  requestparameters,
-  responseelements
+  eventtime AS "事件时间",
+  account AS "账号",
+  region AS "区域",
+  eventsource AS "事件来源",
+  eventname AS "事件名称",
+  useridentity.arn AS "操作主体ARN",
+  sourceipaddress AS "源IP",
+  json_extract_scalar(responseelements, '$.instancesSet.items[0].instanceId') AS "实例ID",
+  requestparameters AS "请求参数",
+  responseelements AS "响应结果"
 FROM soc_logs.cloudtrail_logs
 WHERE account = '809893975949'
   AND eventsource = 'ec2.amazonaws.com'
