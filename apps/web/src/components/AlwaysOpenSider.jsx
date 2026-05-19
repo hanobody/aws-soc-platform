@@ -9,7 +9,6 @@ import {
   ConfigProvider
 } from "antd";
 import {
-  LogoutOutlined,
   UnorderedListOutlined,
   BarsOutlined,
   LeftOutlined,
@@ -21,12 +20,8 @@ import {
 } from "@refinedev/antd";
 import {
   CanAccess,
-  useTranslate,
-  useLogout,
-  useIsExistAuthentication,
   useMenu,
-  useLink,
-  useWarnAboutChange
+  useLink
 } from "@refinedev/core";
 
 const ALWAYS_OPEN_KEY = "alert-center";
@@ -47,14 +42,10 @@ export function AlwaysOpenSider({
     setMobileSiderOpen
   } = useThemedLayoutContext();
 
-  const isExistAuthentication = useIsExistAuthentication();
   const direction = useContext(ConfigProvider.ConfigContext)?.direction;
   const Link = useLink();
-  const { warnWhen, setWarnWhen } = useWarnAboutChange();
-  const translate = useTranslate();
   const { menuItems, selectedKey, defaultOpenKeys } = useMenu({ meta });
   const breakpoint = Grid.useBreakpoint();
-  const { mutate: mutateLogout } = useLogout();
   const [extraOpenKeys, setExtraOpenKeys] = useState([ALWAYS_OPEN_KEY]);
 
   const isMobile = typeof breakpoint.lg === "undefined" ? false : !breakpoint.lg;
@@ -108,34 +99,13 @@ export function AlwaysOpenSider({
     );
   });
 
-  const handleLogout = () => {
-    if (warnWhen) {
-      const confirm = window.confirm(
-        translate("warnWhenUnsavedChanges", "Are you sure you want to leave? You have unsaved changes.")
-      );
-
-      if (confirm) {
-        setWarnWhen(false);
-        mutateLogout();
-      }
-    } else {
-      mutateLogout();
-    }
-  };
-
-  const logout = isExistAuthentication && (
-    <Menu.Item key="logout" onClick={() => handleLogout()} icon={<LogoutOutlined />}>
-      {translate("buttons.logout", "Logout")}
-    </Menu.Item>
-  );
-
   const items = renderTreeView(menuItems, selectedKey);
 
   const renderSider = () => {
     if (render) {
-      return render({ items, logout, collapsed: siderCollapsed });
+      return render({ items, collapsed: siderCollapsed });
     }
-    return [...items, logout].filter(Boolean);
+    return items;
   };
 
   const handleOpenChange = (keys) => {

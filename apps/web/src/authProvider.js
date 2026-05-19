@@ -56,8 +56,8 @@ export const authProvider = {
       localStorage.removeItem("soc_demo_login");
       return { success: true, redirectTo: "/login" };
     }
-    await keycloak.logout({ redirectUri: window.location.origin + "/login" });
-    return { success: true };
+    keycloak.clearToken();
+    return { success: true, redirectTo: "/login" };
   },
   check: async () => {
     const { enabled } = await getKeycloakInstance();
