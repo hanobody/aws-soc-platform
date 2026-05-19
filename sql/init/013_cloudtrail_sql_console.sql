@@ -75,5 +75,5 @@ VALUES
   'SELECT\n  eventtime,\n  account,\n  region,\n  eventsource,\n  eventname,\n  useridentity.arn AS user_arn,\n  sourceipaddress,\n  responseelements\nFROM soc_logs.cloudtrail_logs\nWHERE account = ''809893975949''\n  AND region = ''ap-southeast-1''\n  AND year = ''2026''\n  AND month = ''05''\n  AND day = ''18''\n  AND eventsource = ''ec2.amazonaws.com''\n  AND eventname IN (''RunInstances'', ''StartInstances'', ''StopInstances'', ''RebootInstances'', ''TerminateInstances'')\nORDER BY eventtime DESC\nLIMIT 100',
   'system',
   'system'
-),
+)
 ON CONFLICT (template_code) DO NOTHING;
