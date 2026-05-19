@@ -1,5 +1,5 @@
 import { Layout, Typography, Dropdown, Avatar, Space } from "antd";
-import { DownOutlined, LogoutOutlined, UserOutlined } from "@ant-design/icons";
+import { DownOutlined, LogoutOutlined, UserOutlined, InfoCircleOutlined } from "@ant-design/icons";
 import { useGetIdentity, useLogout } from "@refinedev/core";
 import { APP_VERSION } from "../version";
 
@@ -8,6 +8,12 @@ export function HeaderTitle() {
   const { mutate: logout } = useLogout();
 
   const items = [
+    {
+      key: "about",
+      label: `关于 · 版本 ${APP_VERSION}`,
+      icon: <InfoCircleOutlined />,
+      disabled: true
+    },
     {
       key: "logout",
       label: "退出登录",
@@ -18,10 +24,7 @@ export function HeaderTitle() {
 
   return (
     <Layout.Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", padding: "0 16px", borderBottom: "1px solid #f0f0f0" }}>
-      <Space direction="vertical" size={0}>
-        <Typography.Title level={4} style={{ margin: 0 }}>AWS SOC Platform</Typography.Title>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>版本 {APP_VERSION}</Typography.Text>
-      </Space>
+      <Typography.Title level={4} style={{ margin: 0 }}>AWS SOC Platform</Typography.Title>
       <Dropdown menu={{ items }} trigger={["click"]}>
         <Space style={{ cursor: "pointer" }}>
           <Avatar size="small" icon={<UserOutlined />} />
