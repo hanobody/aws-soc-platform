@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: aws-soc-web
-  namespace: aws-soc
+  namespace: soc
 spec:
   replicas: 1
   selector:
@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: your-registry/aws-soc-web:latest
+          image: doctor8181/aws-soc-platform-web:0.2.1-cleanup-20260522-1120
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

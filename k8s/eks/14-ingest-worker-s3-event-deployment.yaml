@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: aws-soc-ingest-worker
-  namespace: aws-soc
+  name: aws-soc-ingest-worker-s3-event
+  namespace: soc
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: aws-soc-ingest-worker
+      app: aws-soc-ingest-worker-s3-event
   template:
     metadata:
       labels:
-        app: aws-soc-ingest-worker
+        app: aws-soc-ingest-worker-s3-event
     spec:
-      serviceAccountName: aws-soc-ingest-worker
+      serviceAccountName: aws-soc-ingest-worker-s3-event
       containers:
-        - name: ingest-worker
-          image: your-registry/aws-soc-ingest-worker:latest
+        - name: ingest-worker-s3-event
+          image: doctor8181/aws-soc-platform-ingest-worker-s3-event:0.2.1-concurrent-worker-20260521-125628
           imagePullPolicy: IfNotPresent
           env:
             - name: AWS_REGION
@@ -24,11 +24,11 @@ spec:
                 configMapKeyRef:
                   name: aws-soc-config
                   key: AWS_REGION
-            - name: SQS_QUEUE_URL
+            - name: S3_OBJECT_CREATED_QUEUE_URL
               valueFrom:
                 configMapKeyRef:
                   name: aws-soc-config
-                  key: SQS_QUEUE_URL
+                  key: S3_OBJECT_CREATED_QUEUE_URL
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -38,22 +38,22 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   name: aws-soc-config
-                  key: INGEST_WORKER_NAME
-            - name: SQS_MAX_MESSAGES
+                  key: INGEST_S3_EVENT_WORKER_NAME
+            - name: S3_EVENT_SQS_MAX_MESSAGES
               valueFrom:
                 configMapKeyRef:
                   name: aws-soc-config
-                  key: SQS_MAX_MESSAGES
-            - name: SQS_WAIT_SECONDS
+                  key: S3_EVENT_SQS_MAX_MESSAGES
+            - name: S3_EVENT_SQS_WAIT_SECONDS
               valueFrom:
                 configMapKeyRef:
                   name: aws-soc-config
-                  key: SQS_WAIT_SECONDS
-            - name: SQS_VISIBILITY_TIMEOUT
+                  key: S3_EVENT_SQS_WAIT_SECONDS
+            - name: S3_EVENT_SQS_VISIBILITY_TIMEOUT
               valueFrom:
                 configMapKeyRef:
                   name: aws-soc-config
-                  key: SQS_VISIBILITY_TIMEOUT
+                  key: S3_EVENT_SQS_VISIBILITY_TIMEOUT
           resources:
             requests:
               cpu: 100m

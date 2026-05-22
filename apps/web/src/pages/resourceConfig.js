@@ -149,19 +149,5 @@ export const resourceConfig = {
       { key: "event_time", title: "发生时间" }
     ],
     fields: []
-  },
-  "ingested-events": {
-    title: "采集事件",
-    columns: [
-      { key: "id", title: "ID" },
-      { key: "event_id", title: "事件 ID" },
-      { key: "aws_account_id", title: "账号" },
-      { key: "aws_region", title: "区域" },
-      { key: "event_source", title: "事件源" },
-      { key: "event_name", title: "事件名" },
-      { key: "resource_type", title: "资源类型" },
-      { key: "event_time", title: "事件时间" }
-    ],
-    fields: []
   }
 };

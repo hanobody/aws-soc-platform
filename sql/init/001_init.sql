@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS alert_rules (
   severity VARCHAR(20) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   cooldown_seconds INTEGER NOT NULL DEFAULT 0,
-  notification_route_id BIGINT REFERENCES account_notification_routes(id) ON DELETE SET NULL,
+  notification_route_id BIGINT NOT NULL REFERENCES account_notification_routes(id) ON DELETE RESTRICT,
   description TEXT,
   created_by VARCHAR(120),
   updated_by VARCHAR(120),
@@ -91,17 +91,27 @@ CREATE INDEX IF NOT EXISTS idx_alert_rules_lookup
 
 CREATE TABLE IF NOT EXISTS alert_events (
   id BIGSERIAL PRIMARY KEY,
+  event_id VARCHAR(128),
   account_id VARCHAR(32) NOT NULL,
   region_code VARCHAR(32),
+  event_source VARCHAR(255),
   event_name VARCHAR(255) NOT NULL,
   severity VARCHAR(20) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
   event_time TIMESTAMPTZ NOT NULL,
+  resource_type VARCHAR(128),
   resource_id VARCHAR(255),
   resource_name VARCHAR(255),
   user_arn TEXT,
   source_ip VARCHAR(64),
   raw_event_json JSONB NOT NULL,
   alert_status VARCHAR(50) NOT NULL DEFAULT 'new',
+  matched_rule_id BIGINT REFERENCES alert_rules(id) ON DELETE SET NULL,
+  notification_route_id BIGINT REFERENCES account_notification_routes(id) ON DELETE SET NULL,
+  notification_channel_id BIGINT REFERENCES notification_channels(id) ON DELETE SET NULL,
+  notification_error TEXT,
+  notified_at TIMESTAMPTZ,
+  matched_rule_name_snapshot VARCHAR(150),
+  matched_rule_snapshot_json JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -111,13 +121,49 @@ CREATE INDEX IF NOT EXISTS idx_alert_events_account_time
 CREATE INDEX IF NOT EXISTS idx_alert_events_event_name
   ON alert_events(event_name);
 
+CREATE INDEX IF NOT EXISTS idx_alert_events_rule_time
+  ON alert_events(matched_rule_id, event_time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_alert_events_event_source
+  ON alert_events(event_source, event_time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_alert_events_notification_status
+  ON alert_events(alert_status, event_time DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_events_event_id_unique
+  ON alert_events(event_id);
+
 INSERT INTO notification_channels (channel_name, channel_type, enabled)
 VALUES ('default-telegram', 'telegram', TRUE)
 ON CONFLICT DO NOTHING;
 
+INSERT INTO account_notification_routes (account_id, project_name, environment, channel_id, enabled)
+SELECT '*', 'default', 'default', nc.id, TRUE
+FROM notification_channels nc
+WHERE nc.channel_name = 'default-telegram'
+ON CONFLICT (account_id, channel_id) DO NOTHING;
+
 INSERT INTO aws_accounts (account_id, account_name, note)
 VALUES
+  ('577364091059', 'AWS Account 577364091059', '导入账号'),
+  ('446383248756', 'AWS Account 446383248756', '导入账号'),
+  ('135808916487', 'AWS Account 135808916487', '导入账号'),
+  ('156041432019', 'AWS Account 156041432019', '导入账号'),
+  ('247890563706', 'AWS Account 247890563706', '导入账号'),
+  ('839169402617', 'AWS Account 839169402617', '导入账号'),
+  ('742372923113', 'AWS Account 742372923113', '导入账号'),
+  ('951656659734', 'AWS Account 951656659734', '导入账号'),
+  ('076991469592', 'AWS Account 076991469592', '导入账号'),
+  ('400928259799', 'AWS Account 400928259799', '导入账号'),
+  ('201805606249', 'AWS Account 201805606249', '导入账号'),
+  ('746669223461', 'AWS Account 746669223461', '导入账号'),
+  ('828289321688', 'AWS Account 828289321688', '导入账号'),
+  ('919664458431', 'AWS Account 919664458431', '导入账号'),
+  ('837256265149', 'AWS Account 837256265149', '导入账号'),
+  ('211326840893', 'AWS Account 211326840893', '导入账号'),
   ('809893975949', 'Security Account', '安全主账号 / central security account'),
+  ('178502901686', 'AWS Account 178502901686', '导入账号'),
+  ('582998837184', 'AWS Account 582998837184', '导入账号'),
   ('516199268720', 'Member Account', '成员账号 / sample member account')
 ON CONFLICT (account_id) DO NOTHING;
 

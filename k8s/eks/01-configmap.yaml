@@ -2,20 +2,14 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: aws-soc-config
-  namespace: aws-soc
+  namespace: soc
 data:
   NODE_ENV: "production"
   PORT: "4000"
   CORS_ORIGIN: "http://localhost:3000"
   AWS_REGION: "ap-southeast-1"
-  SQS_QUEUE_URL: "https://sqs.ap-southeast-1.amazonaws.com/809893975949/soc-cloudtrail-events"
-  INGEST_WORKER_NAME: "ingest-worker"
-  MATCHER_WORKER_NAME: "matcher-worker"
-  SQS_MAX_MESSAGES: "10"
-  SQS_WAIT_SECONDS: "20"
-  SQS_VISIBILITY_TIMEOUT: "120"
-  MATCHER_BATCH_SIZE: "100"
-  MATCHER_POLL_INTERVAL_MS: "3000"
-  MATCHER_RULE_CACHE_TTL_SECONDS: "15"
-  MATCHER_MAX_ATTEMPTS: "10"
-  MATCHER_DEFAULT_SEVERITY: "medium"
+  S3_OBJECT_CREATED_QUEUE_URL: "https://sqs.ap-southeast-1.amazonaws.com/809893975949/cloudtrail-object-created-queue"
+  INGEST_S3_EVENT_WORKER_NAME: "ingest-worker-s3-event"
+  S3_EVENT_SQS_MAX_MESSAGES: "10"
+  S3_EVENT_SQS_WAIT_SECONDS: "20"
+  S3_EVENT_SQS_VISIBILITY_TIMEOUT: "300"

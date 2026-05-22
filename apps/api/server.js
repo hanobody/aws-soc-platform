@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
+import fs from "fs";
+import https from "https";
 import { SQSClient, GetQueueAttributesCommand } from "@aws-sdk/client-sqs";
 import {
   AthenaClient,
@@ -18,9 +20,22 @@ const databaseUrl = process.env.DATABASE_URL || "postgresql://soc_admin:soc_dev_
 const corsOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
 const awsRegion = process.env.AWS_REGION || "ap-southeast-1";
 const sqsQueueUrl = process.env.SQS_QUEUE_URL || "https://sqs.ap-southeast-1.amazonaws.com/809893975949/soc-cloudtrail-events";
+const s3ObjectCreatedQueueUrl = process.env.S3_OBJECT_CREATED_QUEUE_URL || "https://sqs.ap-southeast-1.amazonaws.com/809893975949/cloudtrail-object-created-queue";
 const athenaDatabase = process.env.ATHENA_DATABASE || "";
 const athenaWorkGroup = process.env.ATHENA_WORKGROUP || "";
 const athenaOutputLocation = process.env.ATHENA_OUTPUT_LOCATION || "";
+
+const defaultIngestEventRules = [
+  { eventSource: "iam.amazonaws.com", eventNames: ["*"] },
+  { eventSource: "sts.amazonaws.com", eventNames: ["AssumeRole", "AssumeRoleWithSAML", "AssumeRoleWithWebIdentity"] },
+  { eventSource: "ec2.amazonaws.com", eventNames: ["RunInstances", "StartInstances", "StopInstances", "RebootInstances", "TerminateInstances", "ModifyInstanceAttribute", "MonitorInstances", "UnmonitorInstances", "CreateSecurityGroup", "DeleteSecurityGroup", "AuthorizeSecurityGroupIngress", "RevokeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupEgress", "ModifySecurityGroupRules", "UpdateSecurityGroupRuleDescriptionsIngress", "UpdateSecurityGroupRuleDescriptionsEgress"] }
+];
+
+const WORKER_POD_TARGETS = [
+  { workerName: "ingest-worker-s3-event", workerType: "ingest-worker-s3-event", appLabel: "aws-soc-ingest-worker-s3-event" }
+];
+
+const ACTIVE_WORKER_TYPES = new Set(WORKER_POD_TARGETS.map((item) => item.workerType));
 
 const pool = new Pool({ connectionString: databaseUrl });
 const sqsClient = new SQSClient({ region: awsRegion });
@@ -91,10 +106,6 @@ const resourceMap = {
       "raw_event_json",
       "alert_status"
     ]
-  },
-  "ingested-events": {
-    table: "ingested_events",
-    fields: []
   }
 };
 
@@ -263,6 +274,67 @@ function sanitizeResourceRow(path, row) {
   if (path === "account-routes") delete sanitized.environment;
 
   return sanitized;
+}
+
+async function getWorkerPodSummary() {
+  const host = process.env.KUBERNETES_SERVICE_HOST;
+  const port = process.env.KUBERNETES_SERVICE_PORT || "443";
+  if (!host) return null;
+
+  const tokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token";
+  const namespacePath = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
+  const caPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
+  if (!fs.existsSync(tokenPath) || !fs.existsSync(namespacePath) || !fs.existsSync(caPath)) return null;
+
+  const token = fs.readFileSync(tokenPath, "utf8").trim();
+  const namespace = fs.readFileSync(namespacePath, "utf8").trim() || "default";
+  const ca = fs.readFileSync(caPath, "utf8");
+  if (!token) return null;
+
+  const summary = new Map();
+  for (const target of WORKER_POD_TARGETS) {
+    const url = `https://${host}:${port}/api/v1/namespaces/${namespace}/pods?labelSelector=${encodeURIComponent(`app=${target.appLabel}`)}`;
+    const payload = await getJSON(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      ca
+    });
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    const desiredPods = items.length;
+    const readyPods = items.filter((pod) => (pod.status?.conditions || []).some((c) => c.type === "Ready" && c.status === "True")).length;
+    summary.set(target.appLabel, {
+      desiredPods,
+      readyPods,
+      podNames: items.map((pod) => pod.metadata?.name).filter(Boolean)
+    });
+  }
+  return summary;
+}
+
+function getJSON(url, { headers = {}, ca } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, {
+      method: "GET",
+      headers,
+      ca
+    }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        if ((res.statusCode || 500) < 200 || (res.statusCode || 500) >= 300) {
+          reject(new Error(`k8s api ${res.statusCode}: ${body}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(body || "{}"));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 async function ensureRuleConfigStateTable() {
@@ -622,26 +694,26 @@ async function ensureAppSettingsTable() {
       isPublic: true
     },
     {
-      key: 'ingest.sourceMode',
-      value: 'sqs',
-      valueType: 'string',
+      key: 'ingest.enabled',
+      value: 'true',
+      valueType: 'boolean',
       category: 'ingest',
-      label: '采集来源模式',
-      description: '支持 sqs / s3，默认 sqs。',
+      label: '采集开关',
+      description: '',
       isPublic: false
     },
     {
-      key: 'ingest.sqs.queueUrl',
-      value: sqsQueueUrl,
+      key: 'ingest.queueUrl',
+      value: s3ObjectCreatedQueueUrl,
       valueType: 'string',
       category: 'ingest',
       label: 'SQS 队列地址',
-      description: 'SQS 采集模式下读取的队列 URL。',
+      description: 'S3 ObjectCreated 事件通知投递到的 SQS 队列 URL。',
       isPublic: false
     },
     {
-      key: 'ingest.sqs.maxMessages',
-      value: String(process.env.SQS_MAX_MESSAGES || '10'),
+      key: 'ingest.maxMessages',
+      value: String(process.env.S3_EVENT_SQS_MAX_MESSAGES || '10'),
       valueType: 'number',
       category: 'ingest',
       label: 'SQS 单次拉取条数',
@@ -649,8 +721,8 @@ async function ensureAppSettingsTable() {
       isPublic: false
     },
     {
-      key: 'ingest.sqs.waitSeconds',
-      value: String(process.env.SQS_WAIT_SECONDS || '20'),
+      key: 'ingest.waitSeconds',
+      value: String(process.env.S3_EVENT_SQS_WAIT_SECONDS || '20'),
       valueType: 'number',
       category: 'ingest',
       label: 'SQS Long Poll 秒数',
@@ -658,8 +730,8 @@ async function ensureAppSettingsTable() {
       isPublic: false
     },
     {
-      key: 'ingest.sqs.visibilityTimeout',
-      value: String(process.env.SQS_VISIBILITY_TIMEOUT || '120'),
+      key: 'ingest.visibilityTimeout',
+      value: String(process.env.S3_EVENT_SQS_VISIBILITY_TIMEOUT || '300'),
       valueType: 'number',
       category: 'ingest',
       label: 'SQS 可见性超时',
@@ -667,30 +739,56 @@ async function ensureAppSettingsTable() {
       isPublic: false
     },
     {
-      key: 'ingest.s3.pollIntervalMinutes',
-      value: '5',
-      valueType: 'number',
-      category: 'ingest',
-      label: 'S3 Worker 执行频率',
-      description: 'S3 / Athena 增量采集 worker 的运行频率，单位分钟。',
-      isPublic: false
-    },
-    {
-      key: 'ingest.s3.targets',
+      key: 'ingest.targets',
       value: '[]',
       valueType: 'json',
       category: 'ingest',
-      label: '账号与区域范围',
-      description: 'S3 / Athena 增量采集模式下，按账号配置区域范围，例如 [{"accountId":"123","regions":["ap-southeast-1","us-east-1"]}]。',
+      label: '采集目标 AWS 账号 / 区域',
+      description: '',
+      isPublic: false
+    },
+    {
+      key: 'ingest.eventRules',
+      value: JSON.stringify(defaultIngestEventRules),
+      valueType: 'json',
+      category: 'ingest',
+      label: '采集规则',
+      description: '支持任意 eventSource / eventNames JSON 数组，例如 [{"eventSource":"ec2.amazonaws.com","eventNames":["RunInstances","StopInstances"]}]。',
       isPublic: false
     }
   ];
+
+  const obsoleteKeys = [
+    'ingest.sourceMode',
+    'ingest.sqs.queueUrl',
+    'ingest.sqs.maxMessages',
+    'ingest.sqs.waitSeconds',
+    'ingest.sqs.visibilityTimeout',
+    'ingest.s3.pollIntervalMinutes',
+    'ingest.s3.targets',
+    'ingest.s3.bucket',
+    'ingest.s3.bucketUri',
+    'ingest.s3.prefix',
+    'ingest.s3.region',
+    'ingest.s3.accountIds',
+    'ingest.iam.captureAll',
+    'ingest.sts.events',
+    'ingest.ec2.instanceEvents',
+    'ingest.ec2.securityGroupEvents'
+  ];
+
+  await pool.query(`DELETE FROM app_settings WHERE setting_key = ANY($1::text[])`, [obsoleteKeys]);
 
   for (const seed of seeds) {
     await pool.query(
       `INSERT INTO app_settings (setting_key, setting_value, value_type, category, label, description, is_public)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (setting_key) DO NOTHING`,
+       ON CONFLICT (setting_key) DO UPDATE SET
+         value_type = EXCLUDED.value_type,
+         category = EXCLUDED.category,
+         label = EXCLUDED.label,
+         description = EXCLUDED.description,
+         is_public = EXCLUDED.is_public`,
       [seed.key, seed.value, seed.valueType, seed.category, seed.label, seed.description, seed.isPublic]
     );
   }
@@ -711,9 +809,9 @@ async function getAthenaRuntimeConfig() {
 }
 
 async function getSqsRuntimeConfig() {
-  const queueUrl = await getAppSettingValue('ingest.sqs.queueUrl', sqsQueueUrl);
+  const queueUrl = await getAppSettingValue('ingest.queueUrl', s3ObjectCreatedQueueUrl);
   return {
-    queueUrl: queueUrl || sqsQueueUrl
+    queueUrl: queueUrl || s3ObjectCreatedQueueUrl
   };
 }
 
@@ -860,41 +958,65 @@ function buildRuleSnapshot(rule) {
   };
 }
 
-function buildIngestedEventsWhere(query = {}) {
-  const clauses = [];
-  const values = [];
-
-  const addIlike = (column, value) => {
-    if (!value || !String(value).trim()) return;
-    values.push(`%${String(value).trim()}%`);
-    clauses.push(`${column} ILIKE $${values.length}`);
+async function validateAlertRuleNotificationRoute(client, payload = {}, { existingRule = null } = {}) {
+  const invalid = (message) => {
+    const error = new Error(message);
+    error.statusCode = 400;
+    return error;
   };
+  const hasRouteField = Object.prototype.hasOwnProperty.call(payload || {}, "notification_route_id");
+  const nextRouteId = hasRouteField ? payload.notification_route_id : existingRule?.notification_route_id;
+  const nextEnabled = Object.prototype.hasOwnProperty.call(payload || {}, "enabled")
+    ? payload.enabled
+    : (existingRule?.enabled ?? true);
 
-  addIlike("event_id", query.eventId);
-  addIlike("event_name", query.eventName);
-  addIlike("resource_id", query.resourceId);
-  addIlike("actor_arn", query.actorArn);
-  addIlike("source_ip", query.sourceIp);
-
-  if (query.awsAccountId && String(query.awsAccountId).trim()) {
-    values.push(String(query.awsAccountId).trim());
-    clauses.push(`aws_account_id = $${values.length}`);
+  if (nextRouteId === null || nextRouteId === undefined || nextRouteId === "") {
+    throw invalid("通知渠道为必填项，请先关联通知渠道。");
   }
 
-  if (query.awsRegion && String(query.awsRegion).trim()) {
-    values.push(String(query.awsRegion).trim());
-    clauses.push(`aws_region = $${values.length}`);
+  const routeResult = await client.query(
+    `SELECT anr.id, anr.enabled AS route_enabled, nc.id AS channel_id, nc.enabled AS channel_enabled
+     FROM account_notification_routes anr
+     JOIN notification_channels nc ON nc.id = anr.channel_id
+     WHERE anr.id = $1
+     LIMIT 1`,
+    [nextRouteId]
+  );
+
+  if (!routeResult.rows.length) {
+    throw invalid("关联的通知渠道不存在，请重新选择。");
   }
 
-  if (query.processStatus && String(query.processStatus).trim()) {
-    values.push(String(query.processStatus).trim());
-    clauses.push(`process_status = $${values.length}`);
+  const route = routeResult.rows[0];
+  if (nextEnabled && (!route.route_enabled || !route.channel_enabled)) {
+    throw invalid("关联的通知渠道未启用，不能启用该规则。");
+  }
+}
+
+async function ensureDefaultNotificationRoute(client = pool) {
+  const channelResult = await client.query(
+    `SELECT id
+     FROM notification_channels
+     WHERE enabled = TRUE
+     ORDER BY id ASC
+     LIMIT 1`
+  );
+  if (!channelResult.rows.length) {
+    const error = new Error("没有可用的已启用通知渠道，无法创建默认通知路由。");
+    error.statusCode = 400;
+    throw error;
   }
 
-  return {
-    whereSql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
-    values
-  };
+  const channelId = channelResult.rows[0].id;
+  const routeResult = await client.query(
+    `INSERT INTO account_notification_routes (account_id, project_name, environment, channel_id, enabled)
+     VALUES ('*', 'default', 'default', $1, TRUE)
+     ON CONFLICT (account_id, channel_id)
+     DO UPDATE SET enabled = TRUE, updated_at = NOW()
+     RETURNING *`,
+    [channelId]
+  );
+  return routeResult.rows[0];
 }
 
 function buildAlertEventsWhere(query = {}) {
@@ -907,11 +1029,11 @@ function buildAlertEventsWhere(query = {}) {
     clauses.push(`${column} ILIKE $${values.length}`);
   };
 
-  addIlike("ie.event_id", query.eventId);
+  addIlike("ae.event_id", query.eventId);
   addIlike("ae.event_name", query.eventName);
   addIlike("ae.resource_id", query.resourceId);
-  addIlike("ie.actor_arn", query.actorArn);
-  addIlike("ie.source_ip", query.sourceIp);
+  addIlike("ae.user_arn", query.actorArn);
+  addIlike("ae.source_ip", query.sourceIp);
   addIlike("ar.rule_name", query.ruleName);
 
   if (query.awsAccountId && String(query.awsAccountId).trim()) {
@@ -1465,13 +1587,7 @@ app.get("/dashboard/workers", async (_req, res) => {
   `);
 
   const result = await pool.query(`
-    WITH source_mode AS (
-      SELECT setting_value AS value
-      FROM app_settings
-      WHERE setting_key = 'ingest.sourceMode'
-      LIMIT 1
-    ),
-    checkpoint_summary AS (
+    WITH checkpoint_summary AS (
       SELECT
         worker_name,
         COUNT(*)::int AS s3_target_count,
@@ -1502,7 +1618,6 @@ app.get("/dashboard/workers", async (_req, res) => {
         WHEN NOW() - last_heartbeat_at <= INTERVAL '120 seconds' THEN 'stale'
         ELSE 'offline'
       END AS health,
-      (SELECT value FROM source_mode) AS ingest_source_mode,
       cs.s3_target_count,
       cs.s3_last_checkpoint_at,
       cs.s3_last_checkpoint_updated_at,
@@ -1511,28 +1626,42 @@ app.get("/dashboard/workers", async (_req, res) => {
     LEFT JOIN checkpoint_summary cs ON cs.worker_name = ws.worker_name
     ORDER BY ws.worker_type, ws.worker_name
   `);
+  const dbRows = (result.rows || []).filter((row) => ACTIVE_WORKER_TYPES.has(row.worker_type));
+  const podSummary = await getWorkerPodSummary().catch(() => null);
+  if (!podSummary) {
+    return res.json({ data: dbRows });
+  }
 
-  res.json({ data: result.rows });
+  const byWorkerName = new Map(dbRows.map((row) => [row.worker_name, row]));
+  const merged = WORKER_POD_TARGETS.map((target) => {
+    const dbRow = byWorkerName.get(target.workerName) || {};
+    const podRow = podSummary.get(target.appLabel) || { desiredPods: 0, readyPods: 0, podNames: [] };
+    const healthy = podRow.desiredPods > 0 && podRow.readyPods === podRow.desiredPods;
+    const partial = podRow.readyPods > 0 && podRow.readyPods < podRow.desiredPods;
+    return {
+      worker_name: target.workerName,
+      worker_type: target.workerType,
+      status: `${dbRow.status || (podRow.desiredPods > 0 ? "running" : "stopped")} · pods ${podRow.readyPods}/${podRow.desiredPods}`,
+      last_heartbeat_at: dbRow.last_heartbeat_at || null,
+      last_message: dbRow.last_message || null,
+      updated_at: dbRow.updated_at || null,
+      stale_seconds: dbRow.stale_seconds ?? null,
+      health: healthy ? "healthy" : partial ? "stale" : "offline",
+      desired_pods: podRow.desiredPods,
+      ready_pods: podRow.readyPods,
+      pod_names: podRow.podNames,
+      s3_target_count: dbRow.s3_target_count ?? null,
+      s3_last_checkpoint_at: dbRow.s3_last_checkpoint_at ?? null,
+      s3_last_checkpoint_updated_at: dbRow.s3_last_checkpoint_updated_at ?? null,
+      s3_checkpoints: dbRow.s3_checkpoints ?? null
+    };
+  });
+
+  res.json({ data: merged });
 });
 
 app.get("/dashboard/queue", async (_req, res) => {
   try {
-    const sourceMode = await getAppSettingValue('ingest.sourceMode', 'sqs');
-    if (sourceMode === 's3') {
-      return res.json({
-        data: {
-          mode: 's3',
-          queueUrl: null,
-          visible: null,
-          inFlight: null,
-          delayed: null,
-          ok: true,
-          hidden: true,
-          message: '当前采集模式为 S3 / Athena，SQS 队列状态已隐藏。'
-        }
-      });
-    }
-
     const { queueUrl } = await getSqsRuntimeConfig();
     const response = await sqsClient.send(new GetQueueAttributesCommand({
       QueueUrl: queueUrl,
@@ -1548,7 +1677,7 @@ app.get("/dashboard/queue", async (_req, res) => {
     const attributes = response.Attributes || {};
     res.json({
       data: {
-        mode: 'sqs',
+        mode: 's3-event-sqs',
         queueUrl,
         visible: Number(attributes.ApproximateNumberOfMessages || 0),
         inFlight: Number(attributes.ApproximateNumberOfMessagesNotVisible || 0),
@@ -1561,7 +1690,7 @@ app.get("/dashboard/queue", async (_req, res) => {
   } catch (error) {
     res.json({
       data: {
-        mode: 'sqs',
+        mode: 's3-event-sqs',
         queueUrl: (await getSqsRuntimeConfig()).queueUrl,
         visible: null,
         inFlight: null,
@@ -1574,22 +1703,13 @@ app.get("/dashboard/queue", async (_req, res) => {
 });
 
 app.get("/dashboard/pipeline", async (_req, res) => {
-  const [ingestSummary, matcherSummary, alertSummary, minuteBuckets] = await Promise.all([
+  const [ingestSummary, alertSummary, minuteBuckets] = await Promise.all([
     pool.query(`
       SELECT
-        COUNT(*)::int AS ingested_last_5m,
-        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '1 minute')::int AS ingested_last_1m
-      FROM ingested_events
+        COUNT(*)::int AS matched_last_5m,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '1 minute')::int AS matched_last_1m
+      FROM alert_events
       WHERE created_at >= NOW() - INTERVAL '5 minutes'
-    `),
-    pool.query(`
-      SELECT
-        COUNT(*) FILTER (WHERE process_status = 'processed')::int AS processed_last_5m,
-        COUNT(*) FILTER (WHERE process_status = 'failed')::int AS failed_last_5m,
-        COUNT(*) FILTER (WHERE process_status IN ('new', 'processing', 'failed'))::int AS pending_now
-      FROM ingested_events
-      WHERE created_at >= NOW() - INTERVAL '5 minutes'
-         OR process_status IN ('new', 'processing', 'failed')
     `),
     pool.query(`
       SELECT
@@ -1607,9 +1727,9 @@ app.get("/dashboard/pipeline", async (_req, res) => {
           INTERVAL '1 minute'
         ) AS bucket
       ),
-      ingest AS (
+      matched AS (
         SELECT date_trunc('minute', created_at) AS bucket, COUNT(*)::int AS count
-        FROM ingested_events
+        FROM alert_events
         WHERE created_at >= NOW() - INTERVAL '5 minutes'
         GROUP BY 1
       ),
@@ -1623,11 +1743,11 @@ app.get("/dashboard/pipeline", async (_req, res) => {
       )
       SELECT
         to_char(b.bucket, 'HH24:MI') AS minute,
-        COALESCE(i.count, 0) AS ingested,
+        COALESCE(m.count, 0) AS matched,
         COALESCE(a.alerts_count, 0) AS alerts,
         COALESCE(a.sent_count, 0) AS sent
       FROM buckets b
-      LEFT JOIN ingest i ON i.bucket = b.bucket
+      LEFT JOIN matched m ON m.bucket = b.bucket
       LEFT JOIN alerts a ON a.bucket = b.bucket
       ORDER BY b.bucket
     `)
@@ -1636,7 +1756,6 @@ app.get("/dashboard/pipeline", async (_req, res) => {
   res.json({
     data: {
       ingest: ingestSummary.rows[0] || {},
-      matcher: matcherSummary.rows[0] || {},
       alerts: alertSummary.rows[0] || {},
       timeline: minuteBuckets.rows || []
     }
@@ -1802,56 +1921,6 @@ app.post("/seed/catalog", async (_req, res) => {
     ON CONFLICT (event_source, event_name) DO NOTHING
   `);
 
-  await pool.query(`
-    WITH scoped_candidates AS (
-      SELECT DISTINCT
-        ie.event_source,
-        ie.event_name,
-        COALESCE(NULLIF(ie.resource_type, ''),
-          CASE
-            WHEN ie.event_source = 'ec2.amazonaws.com' AND ie.event_name IN ('RunInstances', 'StartInstances', 'StopInstances', 'RebootInstances', 'TerminateInstances', 'ModifyInstanceAttribute', 'MonitorInstances', 'UnmonitorInstances') THEN 'ec2-instance'
-            WHEN ie.event_source = 'ec2.amazonaws.com' AND ie.event_name IN ('CreateSecurityGroup', 'DeleteSecurityGroup', 'AuthorizeSecurityGroupIngress', 'RevokeSecurityGroupIngress', 'AuthorizeSecurityGroupEgress', 'RevokeSecurityGroupEgress', 'ModifySecurityGroupRules', 'UpdateSecurityGroupRuleDescriptionsIngress', 'UpdateSecurityGroupRuleDescriptionsEgress') THEN 'security-group'
-            WHEN ie.event_source = 'sts.amazonaws.com' AND ie.event_name = 'AssumeRole' THEN 'iam-role'
-            WHEN ie.event_source = 'iam.amazonaws.com' THEN COALESCE(NULLIF(ie.resource_type, ''), 'iam-entity')
-            ELSE NULL
-          END
-        ) AS resource_type_code
-      FROM ingested_events ie
-      WHERE ie.event_source IN ('ec2.amazonaws.com', 'iam.amazonaws.com', 'sts.amazonaws.com')
-        AND (
-          (ie.event_source = 'ec2.amazonaws.com' AND ie.event_name IN ('RunInstances', 'StartInstances', 'StopInstances', 'RebootInstances', 'TerminateInstances', 'ModifyInstanceAttribute', 'MonitorInstances', 'UnmonitorInstances', 'CreateSecurityGroup', 'DeleteSecurityGroup', 'AuthorizeSecurityGroupIngress', 'RevokeSecurityGroupIngress', 'AuthorizeSecurityGroupEgress', 'RevokeSecurityGroupEgress', 'ModifySecurityGroupRules', 'UpdateSecurityGroupRuleDescriptionsIngress', 'UpdateSecurityGroupRuleDescriptionsEgress'))
-          OR ie.event_source = 'iam.amazonaws.com'
-          OR (ie.event_source = 'sts.amazonaws.com' AND ie.event_name = 'AssumeRole')
-        )
-    )
-    INSERT INTO event_types (resource_type_code, event_source, event_name, display_name, severity, description)
-    SELECT
-      sc.resource_type_code,
-      sc.event_source,
-      sc.event_name,
-      CASE
-        WHEN sc.event_name = 'CreateSecurityGroup' THEN '创建安全组'
-        WHEN sc.event_name = 'DeleteSecurityGroup' THEN '删除安全组'
-        WHEN sc.event_name = 'RunInstances' THEN '创建 EC2 实例'
-        WHEN sc.event_name = 'TerminateInstances' THEN '删除 EC2 实例'
-        WHEN sc.event_name = 'AssumeRole' THEN '切换 IAM 角色'
-        ELSE sc.event_name
-      END AS display_name,
-      CASE
-        WHEN sc.event_source = 'iam.amazonaws.com' THEN 'high'
-        WHEN sc.event_name ILIKE 'Delete%' THEN 'high'
-        WHEN sc.event_name ILIKE 'Terminate%' THEN 'high'
-        WHEN sc.event_name ILIKE 'Modify%' THEN 'high'
-        WHEN sc.event_name ILIKE 'Authorize%' THEN 'high'
-        WHEN sc.event_name ILIKE 'Revoke%' THEN 'medium'
-        ELSE 'medium'
-      END AS severity,
-      CONCAT('Auto-seeded from ingested scoped event: ', sc.event_name)
-    FROM scoped_candidates sc
-    WHERE sc.resource_type_code IS NOT NULL
-    ON CONFLICT (event_source, event_name) DO NOTHING
-  `);
-
   res.json({ ok: true });
 });
 
@@ -1859,11 +1928,29 @@ app.post("/seed/accounts-regions", async (_req, res) => {
   await pool.query(`
     INSERT INTO aws_accounts (account_id, account_name, note)
     VALUES
+      ('577364091059', 'AWS Account 577364091059', '导入账号'),
+      ('446383248756', 'AWS Account 446383248756', '导入账号'),
+      ('135808916487', 'AWS Account 135808916487', '导入账号'),
+      ('156041432019', 'AWS Account 156041432019', '导入账号'),
+      ('247890563706', 'AWS Account 247890563706', '导入账号'),
+      ('839169402617', 'AWS Account 839169402617', '导入账号'),
+      ('742372923113', 'AWS Account 742372923113', '导入账号'),
+      ('951656659734', 'AWS Account 951656659734', '导入账号'),
+      ('076991469592', 'AWS Account 076991469592', '导入账号'),
+      ('400928259799', 'AWS Account 400928259799', '导入账号'),
+      ('201805606249', 'AWS Account 201805606249', '导入账号'),
+      ('746669223461', 'AWS Account 746669223461', '导入账号'),
+      ('828289321688', 'AWS Account 828289321688', '导入账号'),
+      ('919664458431', 'AWS Account 919664458431', '导入账号'),
+      ('837256265149', 'AWS Account 837256265149', '导入账号'),
+      ('211326840893', 'AWS Account 211326840893', '导入账号'),
       ('809893975949', 'Security Account', '安全主账号 / central security account'),
+      ('178502901686', 'AWS Account 178502901686', '导入账号'),
+      ('582998837184', 'AWS Account 582998837184', '导入账号'),
       ('516199268720', 'Member Account', '成员账号 / sample member account')
     ON CONFLICT (account_id) DO UPDATE SET
       account_name = EXCLUDED.account_name,
-      note = EXCLUDED.note
+      note = COALESCE(NULLIF(aws_accounts.note, ''), EXCLUDED.note)
   `);
 
   await pool.query(`
@@ -1912,9 +1999,10 @@ app.post("/seed/accounts-regions", async (_req, res) => {
 });
 
 app.post("/seed/default-rules", async (_req, res) => {
+  const defaultRoute = await ensureDefaultNotificationRoute();
   await pool.query(`
     INSERT INTO alert_rules (
-      rule_name, is_default, account_id, region_code, event_source, event_name, resource_type, severity, enabled, cooldown_seconds, description
+      rule_name, is_default, account_id, region_code, event_source, event_name, resource_type, severity, enabled, cooldown_seconds, notification_route_id, description
     )
     SELECT
       CONCAT('默认规则 - ', et.display_name),
@@ -1927,6 +2015,7 @@ app.post("/seed/default-rules", async (_req, res) => {
       et.severity,
       TRUE,
       0,
+      $1,
       CONCAT('由事件类型初始化生成: ', et.display_name)
     FROM event_types et
     WHERE (et.event_source, et.event_name) IN (
@@ -1956,7 +2045,7 @@ app.post("/seed/default-rules", async (_req, res) => {
         AND ar.event_source = et.event_source
         AND ar.event_name = et.event_name
     )
-  `);
+  `, [defaultRoute.id]);
 
   await bumpRuleConfigVersion();
 
@@ -1969,25 +2058,10 @@ Object.entries(resourceMap).forEach(([path, resource]) => {
     const pageSize = Number(req.query.pageSize || 20);
     const offset = (current - 1) * pageSize;
 
-    if (path === "ingested-events") {
-      const filter = buildIngestedEventsWhere(req.query || {});
-      const countResult = await pool.query(
-        `SELECT COUNT(*)::int AS count FROM ${resource.table} ${filter.whereSql}`,
-        filter.values
-      );
-      const dataResult = await pool.query(
-        `SELECT * FROM ${resource.table} ${filter.whereSql} ORDER BY event_time DESC NULLS LAST, id DESC LIMIT $${filter.values.length + 1} OFFSET $${filter.values.length + 2}`,
-        [...filter.values, pageSize, offset]
-      );
-
-      return res.json({ data: dataResult.rows.map((row) => sanitizeResourceRow(path, row)), total: countResult.rows[0].count });
-    }
-
     if (path === "alert-events") {
       const filter = buildAlertEventsWhere(req.query || {});
       const baseFrom = `
         FROM alert_events ae
-        LEFT JOIN ingested_events ie ON ie.id = ae.source_ingested_event_id
         LEFT JOIN alert_rules ar ON ar.id = ae.matched_rule_id
         LEFT JOIN notification_channels nc ON nc.id = ae.notification_channel_id
       `;
@@ -1998,10 +2072,6 @@ Object.entries(resourceMap).forEach(([path, resource]) => {
       const dataResult = await pool.query(
         `SELECT
            ae.*,
-           ie.event_id,
-           ie.resource_type,
-           ie.actor_arn,
-           ie.source_ip,
            COALESCE(ae.matched_rule_name_snapshot, ar.rule_name) AS matched_rule_name,
            nc.channel_name AS notification_channel_name
          ${baseFrom}
@@ -2068,6 +2138,9 @@ Object.entries(resourceMap).forEach(([path, resource]) => {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      if (path === "alert-rules") {
+        await validateAlertRuleNotificationRoute(client, req.body || {});
+      }
       const result = await client.query(
         `INSERT INTO ${resource.table} (${insert.columns}) VALUES (${insert.placeholders}) RETURNING *`,
         insert.values
@@ -2099,6 +2172,16 @@ Object.entries(resourceMap).forEach(([path, resource]) => {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      let existingRule = null;
+      if (path === "alert-rules") {
+        const existingResult = await client.query(`SELECT * FROM alert_rules WHERE id = $1`, [req.params.id]);
+        if (!existingResult.rows.length) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ message: "Not found" });
+        }
+        existingRule = existingResult.rows[0];
+        await validateAlertRuleNotificationRoute(client, req.body || {}, { existingRule });
+      }
       const result = await client.query(
         `UPDATE ${resource.table} SET ${setClause} WHERE id = $${update.values.length + 1} RETURNING *`,
         [...update.values, req.params.id]
@@ -2178,6 +2261,15 @@ app.post("/alert-rules/bulk-update", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    if (Object.prototype.hasOwnProperty.call(patch, "notification_route_id") || Object.prototype.hasOwnProperty.call(patch, "enabled")) {
+      const existingRules = await client.query(
+        `SELECT * FROM alert_rules WHERE id = ANY($1::bigint[])`,
+        [ids]
+      );
+      for (const rule of existingRules.rows) {
+        await validateAlertRuleNotificationRoute(client, patch, { existingRule: rule });
+      }
+    }
     const result = await client.query(
       `UPDATE alert_rules
        SET ${setClauses.join(", ")}, updated_at = NOW()

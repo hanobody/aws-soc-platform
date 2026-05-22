@@ -3,7 +3,7 @@ import routerBindings, { NavigateToResource, CatchAllNavigate } from "@refinedev
 import { ThemedLayout, ErrorComponent } from "@refinedev/antd";
 import { ConfigProvider, App as AntdApp } from "antd";
 import { Routes, Route, Outlet } from "react-router-dom";
-import { DashboardOutlined, AlertOutlined, BellOutlined, ApartmentOutlined, AppstoreOutlined, TagsOutlined, CloudServerOutlined, GlobalOutlined, DatabaseOutlined, CodeOutlined, SettingOutlined } from "@ant-design/icons";
+import { DashboardOutlined, AlertOutlined, BellOutlined, ApartmentOutlined, AppstoreOutlined, TagsOutlined, CloudServerOutlined, GlobalOutlined, CodeOutlined, SettingOutlined } from "@ant-design/icons";
 import { authProvider } from "./authProvider";
 import { dataProvider } from "./dataProvider";
 import { HeaderTitle } from "./components/HeaderTitle";
@@ -16,7 +16,7 @@ import { AlertEventDetailPage } from "./pages/AlertEventDetailPage";
 import { CloudTrailSqlConsolePage } from "./pages/CloudTrailSqlConsolePage";
 import { SettingsPage } from "./pages/SettingsPage";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 export function App() {
   return (
@@ -90,11 +90,6 @@ export function App() {
               meta: { label: "告警事件", icon: <DashboardOutlined />, parent: "alert-center" }
             },
             {
-              name: "ingested-events",
-              list: "/ingested-events",
-              meta: { label: "采集事件", icon: <DatabaseOutlined />, parent: "alert-center" }
-            },
-            {
               name: "cloudtrail-sql-console",
               list: "/cloudtrail-sql-console",
               meta: { label: "查询中心", icon: <CodeOutlined /> }
@@ -114,6 +109,9 @@ export function App() {
                 <Authenticated key="authenticated-routes" fallback={<CatchAllNavigate to="/login" />}>
                   <ThemedLayout Header={() => <HeaderTitle />} Sider={(props) => <AlwaysOpenSider {...props} />}>
                     <Outlet />
+                    <div style={{ position: "fixed", right: 16, bottom: 12, color: "#999", fontSize: 12, zIndex: 1000 }}>
+                      版权所有 @dr414
+                    </div>
                   </ThemedLayout>
                 </Authenticated>
               }
@@ -140,7 +138,6 @@ export function App() {
               <Route path="/notification-channels/edit/:id" element={<ResourceFormPage resource="notification-channels" mode="edit" />} />
               <Route path="/alert-events" element={<ResourceListPage resource="alert-events" />} />
               <Route path="/alert-events/:id" element={<AlertEventDetailPage apiUrl={API_URL} />} />
-              <Route path="/ingested-events" element={<ResourceListPage resource="ingested-events" />} />
               <Route path="/cloudtrail-sql-console" element={<CloudTrailSqlConsolePage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>

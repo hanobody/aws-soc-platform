@@ -6,7 +6,7 @@ import { Table, Space, Button, Tag, Popconfirm, Typography, message, Form, Input
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { resourceConfig } from "./resourceConfig";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 export function ResourceListPage({ resource }) {
   const config = resourceConfig[resource];
@@ -25,8 +25,7 @@ export function ResourceListPage({ resource }) {
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [batchUpdating, setBatchUpdating] = useState(false);
   const [api, contextHolder] = message.useMessage();
-  const readOnlyResources = ["alert-events", "ingested-events"];
-  const isIngestedEvents = resource === "ingested-events";
+  const readOnlyResources = ["alert-events"];
   const isAlertEvents = resource === "alert-events";
   const isAlertRules = resource === "alert-rules";
   const notificationErrorToastKey = "alert-notification-error-hover";
@@ -147,7 +146,7 @@ export function ResourceListPage({ resource }) {
   };
 
   const renderCell = (column, value, record) => {
-    if (column.key === "event_id" && value && (isIngestedEvents || isAlertEvents)) {
+    if (column.key === "event_id" && value && isAlertEvents) {
       return (
         <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setEventPreview(record)}>
           {value}
@@ -195,31 +194,6 @@ export function ResourceListPage({ resource }) {
   const buildFilters = (values) => Object.fromEntries(
     Object.entries(values).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")
   );
-
-  const ingestedFilterBlock = isIngestedEvents ? (
-    <Form
-      form={form}
-      layout="vertical"
-      onFinish={(values) => {
-        setCurrent(1);
-        setFilters(buildFilters(values));
-      }}
-    >
-      <Row gutter={12}>
-        <Col xs={24} sm={12} md={8} lg={6}><Form.Item name="eventId" label="事件 ID"><Input allowClear placeholder="按事件 ID 查询" /></Form.Item></Col>
-        <Col xs={24} sm={12} md={8} lg={6}><Form.Item name="eventName" label="事件名"><Input allowClear placeholder="如 DeleteSecurityGroup / AssumeRole / RunInstances" /></Form.Item></Col>
-        <Col xs={24} sm={12} md={8} lg={6}><Form.Item name="awsAccountId" label="账号"><Input allowClear placeholder="精确匹配 AWS Account ID" /></Form.Item></Col>
-        <Col xs={24} sm={12} md={8} lg={6}><Form.Item name="awsRegion" label="区域"><Input allowClear placeholder="精确匹配区域，如 ap-southeast-1" /></Form.Item></Col>
-        <Col xs={24} sm={12} md={8} lg={6}><Form.Item name="resourceId" label="资源 ID"><Input allowClear placeholder="如 sg-xxxx / i-xxxx / arn:aws:iam::...:role/..." /></Form.Item></Col>
-        <Col xs={24} sm={12} md={8} lg={6}><Form.Item name="actorArn" label="操作人"><Input allowClear placeholder="模糊搜索 ARN / 用户" /></Form.Item></Col>
-        <Col xs={24} sm={12} md={8} lg={6}><Form.Item name="sourceIp" label="源 IP"><Input allowClear placeholder="模糊搜索源 IP" /></Form.Item></Col>
-        <Col xs={24} style={{ display: "flex", alignItems: "end", gap: 8 }}>
-          <Button type="primary" htmlType="submit">查询</Button>
-          <Button onClick={() => { form.resetFields(); setCurrent(1); setFilters({}); }}>重置</Button>
-        </Col>
-      </Row>
-    </Form>
-  ) : null;
 
   const alertFilterBlock = isAlertEvents ? (
     <Form
@@ -277,7 +251,7 @@ export function ResourceListPage({ resource }) {
     </Form>
   ) : null;
 
-  const filterBlock = ingestedFilterBlock || alertFilterBlock || alertRulesFilterBlock;
+  const filterBlock = alertFilterBlock || alertRulesFilterBlock;
   const visibleColumns = isAlertRules
     ? config.columns.filter((column) => column.key !== "is_default")
     : config.columns;

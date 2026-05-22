@@ -1,25 +1,24 @@
-CREATE TABLE IF NOT EXISTS app_settings (
-  id BIGSERIAL PRIMARY KEY,
-  setting_key VARCHAR(120) NOT NULL UNIQUE,
-  setting_value TEXT,
-  value_type VARCHAR(20) NOT NULL DEFAULT 'string',
-  category VARCHAR(50) NOT NULL DEFAULT 'general',
-  label VARCHAR(120) NOT NULL,
-  description TEXT,
-  is_public BOOLEAN NOT NULL DEFAULT FALSE,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+DELETE FROM app_settings
+WHERE setting_key IN (
+  'ingest.sourceMode',
+  'ingest.sqs.queueUrl',
+  'ingest.sqs.maxMessages',
+  'ingest.sqs.waitSeconds',
+  'ingest.sqs.visibilityTimeout',
+  'ingest.s3.pollIntervalMinutes',
+  'ingest.s3.targets',
+  'ingest.s3.bucket',
+  'ingest.s3.prefix',
+  'ingest.s3.region',
+  'ingest.s3.accountIds',
+  'ingest.iam.captureAll',
+  'ingest.sts.events',
+  'ingest.ec2.instanceEvents',
+  'ingest.ec2.securityGroupEvents'
 );
 
 INSERT INTO app_settings (setting_key, setting_value, value_type, category, label, description, is_public)
 VALUES
-  ('cloudtrail.historyRetentionLimit', '10', 'number', 'general', '最近查询历史保留次数', '查询中心最近执行历史最多保留多少条记录。', FALSE),
-  ('athena.database', 'soc_logs', 'string', 'general', 'Athena 数据库', '查询中心默认使用的 Athena Database。', FALSE),
-  ('athena.workgroup', '', 'string', 'general', 'Athena Workgroup', '可选，留空则使用默认 workgroup。', FALSE),
-  ('athena.outputLocation', 's3://central-cloudtrail-igcock/socresults/', 'string', 'general', 'Athena 结果输出路径', '例如 s3://bucket/prefix/，Athena 查询结果会输出到这里。', FALSE),
-  ('auth.keycloak.enabled', 'false', 'boolean', 'auth', '启用 Keycloak', '控制 Web 登录是否使用 Keycloak SSO。', TRUE),
-  ('auth.keycloak.url', '', 'string', 'auth', 'Keycloak 地址', '例如 https://keycloak.example.com', TRUE),
-  ('auth.keycloak.realm', '', 'string', 'auth', 'Keycloak Realm', '例如 master / soc', TRUE),
-  ('auth.keycloak.clientId', '', 'string', 'auth', 'Keycloak Client ID', '前端登录使用的客户端 ID。', TRUE),
   ('ingest.enabled', 'true', 'boolean', 'ingest', '采集开关', '', FALSE),
   ('ingest.queueUrl', 'https://sqs.ap-southeast-1.amazonaws.com/809893975949/cloudtrail-object-created-queue', 'string', 'ingest', 'SQS 队列地址', 'S3 ObjectCreated 事件通知投递到的 SQS 队列 URL。', FALSE),
   ('ingest.maxMessages', '10', 'number', 'ingest', 'SQS 单次拉取条数', '每次从 SQS 最多读取多少条消息。', FALSE),

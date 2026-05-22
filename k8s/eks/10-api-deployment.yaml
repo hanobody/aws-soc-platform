@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: aws-soc-api
-  namespace: aws-soc
+  namespace: soc
 spec:
   replicas: 1
   selector:
@@ -16,7 +16,7 @@ spec:
       serviceAccountName: aws-soc-api
       containers:
         - name: api
-          image: your-registry/aws-soc-api:latest
+          image: doctor8181/aws-soc-platform-api:0.2.1-cleanup-20260522-1120
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 4000
@@ -42,11 +42,6 @@ spec:
                 configMapKeyRef:
                   name: aws-soc-config
                   key: AWS_REGION
-            - name: SQS_QUEUE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: aws-soc-config
-                  key: SQS_QUEUE_URL
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

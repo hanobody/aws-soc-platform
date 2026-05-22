@@ -20,7 +20,7 @@ import {
 import { DeleteOutlined, PlayCircleOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 
 const { TextArea } = Input;
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 const templateTypeOptions = [
   { label: "系统", value: "system" },

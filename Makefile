@@ -1,36 +1,8 @@
 SHELL := /bin/bash
 
-COMPOSE := docker compose
 API_URL := http://localhost:4000
 
-.PHONY: up down rebuild ps logs logs-api logs-web logs-ingest logs-matcher seed-accounts seed-catalog seed-default-rules seed-all dashboard-workers dashboard-queue dashboard-pipeline
-
-up:
-	$(COMPOSE) up -d --build
-
-down:
-	$(COMPOSE) down
-
-rebuild:
-	$(COMPOSE) up -d --build --force-recreate
-
-ps:
-	$(COMPOSE) ps
-
-logs:
-	$(COMPOSE) logs -f
-
-logs-api:
-	$(COMPOSE) logs -f api
-
-logs-web:
-	$(COMPOSE) logs -f web
-
-logs-ingest:
-	$(COMPOSE) logs -f ingest-worker
-
-logs-matcher:
-	$(COMPOSE) logs -f matcher-worker
+.PHONY: seed-accounts seed-catalog seed-default-rules seed-all dashboard-workers dashboard-queue dashboard-pipeline
 
 seed-accounts:
 	curl -s -X POST $(API_URL)/seed/accounts-regions | python3 -m json.tool

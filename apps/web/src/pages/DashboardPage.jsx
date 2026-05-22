@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Row, Col, Card, Statistic, Typography, Button, Space, List, Tag, Table } from "antd";
+import { Row, Col, Card, Statistic, Typography, Space, List, Tag, Table } from "antd";
 
 function formatDateTime(value) {
   return value ? new Date(value).toLocaleString() : "-";
@@ -52,32 +52,8 @@ export function DashboardPage({ apiUrl }) {
     load();
   }, []);
 
-  const seedCatalog = async () => {
-    await axios.post(`${apiUrl}/seed/catalog`);
-    await load();
-  };
-
-  const seedAccountsRegions = async () => {
-    await axios.post(`${apiUrl}/seed/accounts-regions`);
-    await load();
-  };
-
-  const seedDefaultRules = async () => {
-    await axios.post(`${apiUrl}/seed/default-rules`);
-    await load();
-  };
-
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <div>
-        <Typography.Title level={2}>Dashboard</Typography.Title>
-        <Typography.Paragraph type="secondary">这是本地 MVP，已经连到你本机 PostgreSQL。</Typography.Paragraph>
-        <Space>
-          <Button onClick={seedAccountsRegions}>初始化账号/区域</Button>
-          <Button onClick={seedCatalog}>初始化当前范围资源/事件类型</Button>
-          <Button onClick={seedDefaultRules}>初始化当前范围默认规则</Button>
-        </Space>
-      </div>
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12} xl={4}><Card loading={loading}><Statistic title="AWS账号" value={stats.awsAccounts} /></Card></Col>
         <Col xs={24} md={12} xl={4}><Card loading={loading}><Statistic title="区域" value={stats.awsRegions} /></Card></Col>
@@ -88,12 +64,12 @@ export function DashboardPage({ apiUrl }) {
         <Col xs={24} md={12} xl={6}><Card loading={loading}><Statistic title="在线 Worker" value={workers.filter((item) => item.health === "healthy").length} suffix={`/ ${workers.length || 2}`} /></Card></Col>
         {queue.mode !== "s3" ? <Col xs={24} md={12} xl={6}><Card loading={loading}><Statistic title="SQS 可见积压" value={queue.visible ?? 0} /></Card></Col> : null}
         {queue.mode !== "s3" ? <Col xs={24} md={12} xl={6}><Card loading={loading}><Statistic title="SQS 处理中" value={queue.inFlight ?? 0} /></Card></Col> : null}
-        <Col xs={24} md={12} xl={6}><Card loading={loading}><Statistic title="近 5 分钟采集" value={pipeline.ingest?.ingested_last_5m ?? 0} /></Card></Col>
+        <Col xs={24} md={12} xl={6}><Card loading={loading}><Statistic title="近 5 分钟规则命中" value={pipeline.ingest?.matched_last_5m ?? 0} /></Card></Col>
         <Col xs={24} md={12} xl={6}><Card loading={loading}><Statistic title="近 5 分钟已发送告警" value={pipeline.alerts?.sent_last_5m ?? 0} /></Card></Col>
       </Row>
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <Card title="Worker 状态" loading={loading} extra={<Button size="small" onClick={load}>刷新</Button>}>
+          <Card title="Worker 状态" loading={loading}>
             <Table
               dataSource={workers}
               rowKey="worker_name"
@@ -114,6 +90,7 @@ export function DashboardPage({ apiUrl }) {
                         {item.worker_type === "ingest-worker" && item.ingest_source_mode ? <Tag color="blue">mode:{item.ingest_source_mode}</Tag> : null}
                       </Space>
                       <Typography.Text type="secondary">最后心跳：{formatDateTime(item.last_heartbeat_at)} · 延迟 {item.stale_seconds ?? "-"} 秒</Typography.Text>
+                      {typeof item.ready_pods === "number" ? <Typography.Text type="secondary">Pod 就绪：{item.ready_pods}/{item.desired_pods ?? 0}{Array.isArray(item.pod_names) && item.pod_names.length ? ` · ${item.pod_names.join(", ")}` : ""}</Typography.Text> : null}
                     </Space>
                   )
                 },
@@ -130,7 +107,7 @@ export function DashboardPage({ apiUrl }) {
                           <Typography.Text type="secondary">目标范围：{compactS3TargetList(item.s3_checkpoints)}</Typography.Text>
                         </>
                       ) : (
-                        <Typography.Text type="secondary">SQS 模式无 Athena checkpoint</Typography.Text>
+                        <Typography.Text type="secondary">当前 worker 无 Athena checkpoint</Typography.Text>
                       )}
                     </Space>
                   )
@@ -203,10 +180,7 @@ export function DashboardPage({ apiUrl }) {
         <Col xs={24} xl={queue.mode === "s3" ? 24 : 12}>
           <Card title="近 5 分钟流水线概览" loading={loading}>
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
-              <Typography.Text>采集：{pipeline.ingest?.ingested_last_5m ?? 0}（近 1 分钟 {pipeline.ingest?.ingested_last_1m ?? 0}）</Typography.Text>
-              <Typography.Text>Matcher 已处理：{pipeline.matcher?.processed_last_5m ?? 0}</Typography.Text>
-              <Typography.Text>Matcher 失败：{pipeline.matcher?.failed_last_5m ?? 0}</Typography.Text>
-              <Typography.Text>当前待处理：{pipeline.matcher?.pending_now ?? 0}</Typography.Text>
+              <Typography.Text>命中规则：{pipeline.ingest?.matched_last_5m ?? 0}（近 1 分钟 {pipeline.ingest?.matched_last_1m ?? 0}）</Typography.Text>
               <Typography.Text>告警生成：{pipeline.alerts?.alerts_last_5m ?? 0}</Typography.Text>
               <Typography.Text>告警发送失败：{pipeline.alerts?.notify_failed_last_5m ?? 0}</Typography.Text>
             </Space>
@@ -223,7 +197,7 @@ export function DashboardPage({ apiUrl }) {
               pagination={false}
               columns={[
                 { title: "时间", dataIndex: "minute", key: "minute" },
-                { title: "采集入库", dataIndex: "ingested", key: "ingested" },
+                { title: "命中规则", dataIndex: "matched", key: "matched" },
                 { title: "告警生成", dataIndex: "alerts", key: "alerts" },
                 { title: "告警已发送", dataIndex: "sent", key: "sent" }
               ]}

@@ -24,7 +24,7 @@ export function HeaderTitle() {
 
   return (
     <Layout.Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", padding: "0 16px", borderBottom: "1px solid #f0f0f0" }}>
-      <Typography.Title level={4} style={{ margin: 0 }}>AWS SOC Platform</Typography.Title>
+      <div />
       <Dropdown menu={{ items }} trigger={["click"]}>
         <Space style={{ cursor: "pointer" }}>
           <Avatar size="small" icon={<UserOutlined />} />

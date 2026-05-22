@@ -6,7 +6,7 @@ import { Alert, Card, Checkbox, Col, Divider, Empty, Form, Input, InputNumber, R
 import axios from "axios";
 import { resourceConfig } from "./resourceConfig";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 function renderBasicField(field) {
   if (field.type === "number") return <InputNumber style={{ width: "100%" }} />;
@@ -343,14 +343,20 @@ function LinkedRuleFields({ form, catalogsLoading, resourceTypes, eventTypes, ac
             </Form.Item>
           </Col>
           <Col xs={24} md={8}>
-            <Form.Item label="通知渠道" name="notification_channel_id">
+            <Form.Item
+              label="通知渠道"
+              name="notification_channel_id"
+              rules={[{ required: true, message: "请选择通知渠道" }]}
+              extra={channelOptions.length ? "规则必须关联一个已启用的通知渠道。" : "当前没有可用的已启用通知渠道，请先去通知渠道里启用一个。"}
+            >
               <Select
                 showSearch
-                allowClear
+                allowClear={false}
                 placeholder="选择通知渠道"
                 optionFilterProp="label"
                 filterOption={(input, option) => String(option?.searchText || option?.label || "").toLowerCase().includes(input.toLowerCase())}
                 options={channelOptions}
+                notFoundContent="没有可用的已启用通知渠道"
               />
             </Form.Item>
           </Col>
@@ -587,6 +593,10 @@ export function ResourceFormPage({ resource, mode }) {
     const selectedAccounts = values.account_ids?.length ? values.account_ids : ["*"];
     const selectedRegions = values.region_codes?.length ? values.region_codes : ["*"];
     const selectedChannelId = values.notification_channel_id || null;
+    if (!selectedChannelId) {
+      api.error("通知渠道为必填项，请先选择通知渠道");
+      return;
+    }
     if (!selectedNames.length) {
       api.error("请至少选择一个事件类型");
       return;

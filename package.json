@@ -1,6 +1,6 @@
 {
   "name": "aws-soc-platform",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "AWS multi-account SOC platform MVP scaffold",
   "workspaces": [
@@ -8,14 +8,6 @@
     "apps/web"
   ],
   "scripts": {
-    "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose stop postgres",
-    "db:logs": "docker compose logs -f postgres",
-    "compose:up": "docker compose up -d --build",
-    "compose:down": "docker compose down",
-    "compose:rebuild": "docker compose up -d --build --force-recreate",
-    "compose:ps": "docker compose ps",
-    "compose:logs": "docker compose logs -f",
     "api:dev": "npm --workspace apps/api run dev",
     "api:start": "npm --workspace apps/api run start",
     "web:dev": "npm --workspace apps/web run dev",
